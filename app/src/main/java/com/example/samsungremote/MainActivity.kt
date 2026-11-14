@@ -79,6 +79,7 @@ private fun RemoteApp() {
     var newAppId by remember { mutableStateOf("") }
     var typed by remember { mutableStateOf("") }
     var pinned by remember { mutableStateOf(readApps(prefs.getString("apps", "").orEmpty())) }
+    var pendingDelete by remember { mutableStateOf<TvApp?>(null) }
 
     fun saveApps(apps: List<TvApp>) {
         pinned = apps
@@ -179,7 +180,8 @@ private fun RemoteApp() {
                                     if (pinned.isNotEmpty()) {
                                         ShortcutGrid(pinned, installed,
                                             onLaunch = ::launch,
-                                            onReorder = ::saveApps)
+                                            onReorder = ::saveApps,
+                                            onDelete = { pendingDelete = it })
                                     } else {
                                         Text("Mit + Apps hinzufügen",
                                             style = MaterialTheme.typography.bodySmall,
@@ -302,6 +304,23 @@ private fun RemoteApp() {
             }
         }
 
+        pendingDelete?.let { app ->
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Schnellzugriff entfernen?") },
+                text = { Text("${app.name} aus den Schnellzugriffen entfernen? Die App bleibt auf dem TV installiert.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        saveApps(pinned.filterNot { it.id == app.id })
+                        pendingDelete = null
+                    }) { Text("Entfernen") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) { Text("Abbrechen") }
+                }
+            )
+        }
+
         if (addApp) {
             AlertDialog(
                 onDismissRequest = { addApp = false },
@@ -387,13 +406,12 @@ private fun CompactRemote(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            ControlButton(Icons.Default.Home, "Home", onClick = { onKey("KEY_HOME") })
+            ControlButton(Icons.Default.Input, "Quelle", onClick = { onKey("KEY_SOURCE") })
             ControlButton(Icons.AutoMirrored.Filled.ArrowBack, "Zurück",
                 onClick = { onKey("KEY_RETURN") })
-            ControlButton(Icons.Default.Input, "Quelle",
-                onClick = { onKey("KEY_SOURCE") })
-            ControlButton(Icons.Default.VolumeOff, "Stumm",
-                onClick = { onKey("KEY_MUTE") })
+            ControlButton(Icons.Default.Home, "Home",
+                onClick = { onKey("KEY_HOME") })
+            Spacer(Modifier.size(52.dp))
             ControlButton(Icons.Default.PowerSettingsNew, "Ein/Aus",
                 background = Color(0xFF3D2838),
                 tint = Color(0xFFFFAFC3),
@@ -451,8 +469,9 @@ private fun CompactRemote(
                 ) {
                     ControlButton(Icons.Default.Add, "Sender hoch",
                         onClick = { onKey("KEY_CHUP") })
-                    Text("CH", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.Default.Tv, contentDescription = "Sender",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp))
                     ControlButton(Icons.Default.Remove, "Sender runter",
                         onClick = { onKey("KEY_CHDOWN") })
                 }
@@ -525,7 +544,8 @@ private fun ShortcutGrid(
     apps: List<TvApp>,
     installedApps: List<TvApp>,
     onLaunch: (TvApp) -> Unit,
-    onReorder: (List<TvApp>) -> Unit
+    onReorder: (List<TvApp>) -> Unit,
+    onDelete: (TvApp) -> Unit
 ) {
     val bounds = remember { mutableStateMapOf<String, Rect>() }
     var draggingId by remember { mutableStateOf<String?>(null) }
@@ -600,7 +620,10 @@ private fun ShortcutGrid(
                                     }
                                 }
                             },
-                            onDragEnd = { finishDrag() },
+                            onDragEnd = {
+                                if (dragOffset.getDistance() < 12.dp.toPx()) onDelete(app)
+                                finishDrag()
+                            },
                             onDragCancel = { finishDrag() }
                         )
                     },
