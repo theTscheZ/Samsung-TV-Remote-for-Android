@@ -1,6 +1,19 @@
 package com.example.samsungremote
 
 import android.os.Bundle
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -170,15 +183,12 @@ private fun RemoteApp() {
                                         style = MaterialTheme.typography.titleMedium)
                                     TextButton(onClick = { page = 1 }) { Text("Bearbeiten") }
                                 }
-                                Text("Apps wie Crunchyroll kannst du hier anpinnen.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                pinned.forEach { app ->
-                                    Spacer(Modifier.height(GAP))
-                                    OutlinedButton(
-                                        onClick = { launch(app) },
-                                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                                        shape = SHAPE
-                                    ) { Text(app.name) }
+                                if (pinned.isEmpty()) {
+                                    Text("Tippe auf +, um Apps anzupinnen.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else {
+                                    Spacer(Modifier.height(12.dp))
+                                    ShortcutGrid(pinned, installed, onLaunch = ::launch)
                                 }
                                 Spacer(Modifier.height(GAP))
                                 OutlinedButton(
@@ -395,3 +405,61 @@ private fun readApps(raw: String): List<TvApp> = try {
             ?.takeIf { it.id.isNotBlank() }
     }
 } catch (_: Exception) { emptyList() }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ShortcutGrid(
+    apps: List<TvApp>,
+    installedApps: List<TvApp>,
+    onLaunch: (TvApp) -> Unit
+) {
+    // FlowRow reflows automatically as the screen width changes.
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        apps.forEach { app ->
+            ShortcutIcon(app, installedApps, onClick = { onLaunch(app) })
+        }
+    }
+}
+
+@Composable
+private fun ShortcutIcon(
+    app: TvApp,
+    installedApps: List<TvApp>,
+    onClick: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val iconBitmap = remember(app.id, installedApps) {
+        try {
+            val file = appIconFile(context, app.id)
+            if (file.isFile) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap()
+            else null
+        } catch (_: Exception) { null }
+    }
+    val initial = app.name.trim().take(1).uppercase().ifBlank { "?" }
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "${app.name} öffnen" },
+        contentAlignment = Alignment.Center
+    ) {
+        if (iconBitmap != null) {
+            Image(
+                bitmap = iconBitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape)
+            )
+        } else {
+            Text(initial, style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
