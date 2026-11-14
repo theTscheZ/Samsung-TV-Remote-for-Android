@@ -24,6 +24,8 @@ jobs:
           packages: 'platform-tools'
       - name: Install Android API 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Prepare offline PNG app logos
+        run: python3 scripts/fetch_brand_icons.py
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
