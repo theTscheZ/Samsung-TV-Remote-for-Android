@@ -411,7 +411,8 @@ private fun CompactRemote(
                 onClick = { onKey("KEY_RETURN") })
             ControlButton(Icons.Default.Home, "Home",
                 onClick = { onKey("KEY_HOME") })
-            Spacer(Modifier.size(52.dp))
+            ControlButton(Icons.Default.VolumeOff, "Stumm",
+                onClick = { onKey("KEY_MUTE") })
             ControlButton(Icons.Default.PowerSettingsNew, "Ein/Aus",
                 background = Color(0xFF3D2838),
                 tint = Color(0xFFFFAFC3),
@@ -428,7 +429,12 @@ private fun CompactRemote(
                     verticalArrangement = Arrangement.SpaceEvenly
                 ) {
                     ControlButton(Icons.Default.Add, "Lauter", onClick = { onKey("KEY_VOLUP") })
-                    ControlButton(Icons.Default.VolumeMute, "Stumm", onClick = { onKey("KEY_MUTE") })
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = "Lautstärke",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(25.dp)
+                    )
                     ControlButton(Icons.Default.Remove, "Leiser", onClick = { onKey("KEY_VOLDOWN") })
                 }
                 Box(
@@ -673,7 +679,7 @@ private fun ShortcutIcon(
                     painter = painterResource(brand.iconRes),
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(54.dp)
+                    modifier = Modifier.fillMaxSize().clip(CircleShape)
                 )
             }
             brand?.wordmark != null -> {
