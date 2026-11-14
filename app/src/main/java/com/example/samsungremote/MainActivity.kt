@@ -1,6 +1,16 @@
 package com.example.samsungremote
 
 import android.os.Bundle
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.zIndex
 import android.graphics.BitmapFactory
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
@@ -190,7 +200,11 @@ private fun RemoteApp() {
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 } else {
                                     Spacer(Modifier.height(12.dp))
-                                    ShortcutGrid(pinned, installed, onLaunch = ::launch)
+                                    ShortcutGrid(pinned, installed, onLaunch = ::launch, onReorder = ::saveApps)
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Länger gedrückt halten und zum Sortieren ziehen",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Spacer(Modifier.height(GAP))
                                 OutlinedButton(
@@ -413,16 +427,90 @@ private fun readApps(raw: String): List<TvApp> = try {
 private fun ShortcutGrid(
     apps: List<TvApp>,
     installedApps: List<TvApp>,
-    onLaunch: (TvApp) -> Unit
+    onLaunch: (TvApp) -> Unit,
+    onReorder: (List<TvApp>) -> Unit
 ) {
-    // FlowRow reflows automatically as the screen width changes.
+    val bounds = remember { mutableStateMapOf<String, Rect>() }
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var dragStartBounds by remember { mutableStateOf<Rect?>(null) }
+    var dragOffset by remember { mutableStateOf(Offset.Zero) }
+    var dropTarget by remember { mutableStateOf<String?>(null) }
+    val haptics = LocalHapticFeedback.current
+
+    fun finishDrag() {
+        val source = draggingId
+        val target = dropTarget
+        if (source != null && target != null && source != target) {
+            val from = apps.indexOfFirst { it.id == source }
+            val to = apps.indexOfFirst { it.id == target }
+            if (from >= 0 && to >= 0) {
+                val reordered = apps.toMutableList()
+                val moved = reordered.removeAt(from)
+                reordered.add(to, moved)
+                onReorder(reordered)
+            }
+        }
+        draggingId = null
+        dropTarget = null
+        dragStartBounds = null
+        dragOffset = Offset.Zero
+    }
+
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         apps.forEach { app ->
-            ShortcutIcon(app, installedApps, onClick = { onLaunch(app) })
+            val isDragging = draggingId == app.id
+            val isTarget = dropTarget == app.id && draggingId != app.id
+            Box(
+                modifier = Modifier
+                    .size(68.dp)
+                    .zIndex(if (isDragging) 2f else 0f)
+                    .onGloballyPositioned { bounds[app.id] = it.boundsInRoot() }
+                    .graphicsLayer {
+                        if (isDragging) {
+                            translationX = dragOffset.x
+                            translationY = dragOffset.y
+                            scaleX = 1.1f
+                            scaleY = 1.1f
+                            shadowElevation = 12.dp.toPx()
+                        } else if (isTarget) {
+                            scaleX = 0.88f
+                            scaleY = 0.88f
+                        }
+                    }
+                    .pointerInput(app.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                draggingId = app.id
+                                dragStartBounds = bounds[app.id]
+                                dragOffset = Offset.Zero
+                                dropTarget = null
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                if (draggingId == app.id) {
+                                    dragOffset += dragAmount
+                                    val center = dragStartBounds?.center?.plus(dragOffset)
+                                    if (center != null) {
+                                        val newTarget = apps.firstOrNull {
+                                            it.id != app.id && bounds[it.id]?.contains(center) == true
+                                        }?.id
+                                        if (newTarget != null) dropTarget = newTarget
+                                    }
+                                }
+                            },
+                            onDragEnd = { finishDrag() },
+                            onDragCancel = { finishDrag() }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                ShortcutIcon(app, installedApps, onClick = { if (draggingId == null) onLaunch(app) })
+            }
         }
     }
 }
