@@ -2,6 +2,8 @@ package com.example.samsungremote
 
 import android.os.Bundle
 import android.graphics.BitmapFactory
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -432,34 +434,72 @@ private fun ShortcutIcon(
     onClick: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val iconBitmap = remember(app.id, installedApps) {
+    val brand = remember(app.name, app.id) { brandFor(app) }
+    val tvIconBitmap = remember(app.id, installedApps) {
         try {
             val file = appIconFile(context, app.id)
             if (file.isFile) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap()
             else null
         } catch (_: Exception) { null }
     }
-    val initial = app.name.trim().take(1).uppercase().ifBlank { "?" }
+    val fallbackLabel = app.name.trim().ifBlank { "App" }
+    // Consistent readable fallback for unknown TV apps (not an anonymous grey initial).
+    val fallbackColors = listOf(
+        Color(0xFF244B79), Color(0xFF54418F),
+        Color(0xFF236A60), Color(0xFF80522B)
+    )
+    val fallbackBackground = fallbackColors[(app.id.hashCode().toLong().and(0x7FFFFFFF) % fallbackColors.size).toInt()]
     Box(
         modifier = Modifier
-            .size(64.dp)
+            .size(68.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(brand?.background ?: fallbackBackground)
             .clickable(onClick = onClick)
             .semantics { contentDescription = "${app.name} öffnen" },
         contentAlignment = Alignment.Center
     ) {
-        if (iconBitmap != null) {
-            Image(
-                bitmap = iconBitmap,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().clip(CircleShape)
-            )
-        } else {
-            Text(initial, style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        when {
+            brand?.iconRes != null -> {
+                Icon(
+                    painter = painterResource(brand.iconRes),
+                    contentDescription = null,
+                    tint = brand.foreground,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+            brand?.wordmark != null -> {
+                Text(
+                    text = brand.wordmark,
+                    color = brand.foreground,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelMedium,
+                    lineHeight = MaterialTheme.typography.labelMedium.lineHeight,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+            tvIconBitmap != null -> {
+                Image(
+                    bitmap = tvIconBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape).padding(5.dp)
+                )
+            }
+            else -> {
+                Text(
+                    text = fallbackLabel,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    lineHeight = MaterialTheme.typography.labelSmall.lineHeight,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(5.dp)
+                )
+            }
         }
     }
 }
