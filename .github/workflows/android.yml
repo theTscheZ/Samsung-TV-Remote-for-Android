@@ -28,6 +28,7 @@ jobs:
         run: |
           python3 -m pip install --quiet Pillow
           python3 scripts/fetch_brand_icons.py
+          python3 scripts/normalize_brand_icons.py
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
