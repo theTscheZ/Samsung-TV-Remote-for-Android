@@ -3,6 +3,8 @@
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.parse import quote
+from io import BytesIO
+from PIL import Image
 
 OUT = Path("app/src/main/res/drawable-nodpi")
 OUT.mkdir(parents=True, exist_ok=True)
@@ -38,9 +40,18 @@ def fetch(url):
     request = Request(url, headers={"User-Agent": "SamsungRemoteAndroid"})
     with urlopen(request, timeout=25) as response:
         contents = response.read(1000000)
-    if not contents.startswith(PNG_SIGNATURE):
-        raise ValueError("Not a PNG")
-    return contents
+    if contents.startswith(PNG_SIGNATURE):
+        return contents
+    # Accept actual raster favicons (ICO / WebP / JPEG), convert them to PNG.
+    with Image.open(BytesIO(contents)) as image:
+        image = image.convert("RGBA")
+        image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+        output = BytesIO()
+        image.save(output, format="PNG")
+        result = output.getvalue()
+    if not result.startswith(PNG_SIGNATURE):
+        raise ValueError("Invalid raster image")
+    return result
 
 missing = []
 for ident, source_name, website in ICONS:
@@ -51,6 +62,10 @@ for ident, source_name, website in ICONS:
     if source_name:
         urls.append(f"https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/png/{quote(source_name)}")
     urls.append(f"https://www.google.com/s2/favicons?domain={quote(website)}&sz=256")
+    urls.append(f"https://icons.duckduckgo.com/ip3/{quote(website)}.ico")
+    if website in {"arte.tv", "canalplus.com", "sky.com"}:
+        urls.append(f"https://www.google.com/s2/favicons?domain=www.{quote(website)}&sz=128")
+        urls.append(f"https://icons.duckduckgo.com/ip3/www.{quote(website)}.ico")
     for url in urls:
         try:
             png = fetch(url)
