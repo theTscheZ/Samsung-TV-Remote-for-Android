@@ -43,7 +43,9 @@ def normalize(path):
     w,h=im.size
     corners=[im.getpixel((x,y))[3] for x,y in
              [(0,0),(w-1,0),(0,h-1),(w-1,h-1)]]
-    square_tile=(.84<=w/h<=1.2 and min(corners)>248)
+    rect=im.getchannel("A").getbbox()
+    fills_tile=bool(rect and (rect[2]-rect[0])>=.92*w and (rect[3]-rect[1])>=.92*h)
+    square_tile=(.84<=w/h<=1.2 and (min(corners)>248 or fills_tile))
     if square_tile:
         # Full-bleed square artwork: the circular mask removes every square corner.
         scale=max(SIZE/w,SIZE/h)
