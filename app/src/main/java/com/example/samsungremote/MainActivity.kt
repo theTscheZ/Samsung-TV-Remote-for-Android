@@ -16,6 +16,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -120,14 +121,11 @@ private fun RemoteApp() {
                 contentPadding = PaddingValues(horizontal = PAGE, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                item {
+                if (page != 0) item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("TV Remote", style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold)
-                            Text(status, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text(status, Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                         IconButton(onClick = {
                             if (client.host.isNotBlank()) client.connect(client.host) else page = 2
                         }) { Icon(Icons.Default.Refresh, "Verbinden") }
@@ -137,101 +135,60 @@ private fun RemoteApp() {
                 when (page) {
                     0 -> {
                         item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                KeyButton("Aus", Modifier.weight(1f)) { key("KEY_POWEROFF") }
-                                KeyButton("Ein", Modifier.weight(1f)) {
-                                    coroutine.launch {
-                                        status = if (client.wake()) "Aufwecksignal gesendet"
-                                            else "MAC-Adresse unter Verbindung eintragen"
+                            CompactRemote(
+                                status = status,
+                                onReconnect = {
+                                    if (client.host.isNotBlank()) client.connect(client.host)
+                                    else page = 2
+                                },
+                                onPower = {
+                                    if (client.connected) {
+                                        // Samsung Tizen models do not all support KEY_POWEROFF.
+                                        // KEY_POWER is the real remote's toggle key.
+                                        if (!client.key("KEY_POWER")) status = "Ausschalten fehlgeschlagen"
+                                    } else {
+                                        coroutine.launch {
+                                            status = if (client.wake()) "Einschaltsignal gesendet"
+                                                else "TV-MAC-Adresse unter Verbindung hinterlegen"
+                                        }
                                     }
+                                },
+                                onKey = ::key,
+                                onPlayPause = { play ->
+                                    if (client.key(if (play) "KEY_PLAY" else "KEY_PAUSE")) true
+                                    else { status = "Bitte TV zuerst verbinden"; false }
                                 }
-                            }
+                            )
                         }
                         item {
-                            Panel {
-                                Text("Navigation", style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(12.dp))
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(GAP)
-                                ) {
-                                    KeyButton("↑", Modifier.width(82.dp)) { key("KEY_UP") }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                        KeyButton("←", Modifier.width(82.dp)) { key("KEY_LEFT") }
-                                        KeyButton("OK", Modifier.width(82.dp)) { key("KEY_ENTER") }
-                                        KeyButton("→", Modifier.width(82.dp)) { key("KEY_RIGHT") }
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = SHAPE,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Schnellzugriffe", Modifier.weight(1f),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold)
+                                        IconButton(onClick = { addApp = true }) {
+                                            Icon(Icons.Default.Add, "Schnellzugriff hinzufügen")
+                                        }
+                                        TextButton(onClick = { page = 1 }) { Text("Apps") }
                                     }
-                                    KeyButton("↓", Modifier.width(82.dp)) { key("KEY_DOWN") }
-                                }
-                                Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                    KeyButton("Zurück", Modifier.weight(1f)) { key("KEY_RETURN") }
-                                    KeyButton("Home", Modifier.weight(1f)) { key("KEY_HOME") }
-                                    KeyButton("Quelle", Modifier.weight(1f)) { key("KEY_SOURCE") }
-                                }
-                            }
-                        }
-                        item {
-                            Panel {
-                                Text("Lautstärke & Sender", style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                    KeyButton("Vol −", Modifier.weight(1f)) { key("KEY_VOLDOWN") }
-                                    KeyButton("Stumm", Modifier.weight(1f)) { key("KEY_MUTE") }
-                                    KeyButton("Vol +", Modifier.weight(1f)) { key("KEY_VOLUP") }
-                                }
-                                Spacer(Modifier.height(GAP))
-                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                    KeyButton("CH −", Modifier.weight(1f)) { key("KEY_CHDOWN") }
-                                    KeyButton("CH +", Modifier.weight(1f)) { key("KEY_CHUP") }
-                                }
-                            }
-                        }
-                        item {
-                            Panel {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Schnellzugriffe", Modifier.weight(1f),
-                                        style = MaterialTheme.typography.titleMedium)
-                                    TextButton(onClick = { page = 1 }) { Text("Bearbeiten") }
-                                }
-                                if (pinned.isEmpty()) {
-                                    Text("Tippe auf +, um Apps anzupinnen.",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                } else {
-                                    Spacer(Modifier.height(12.dp))
-                                    ShortcutGrid(pinned, installed, onLaunch = ::launch, onReorder = ::saveApps)
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Länger gedrückt halten und zum Sortieren ziehen",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Spacer(Modifier.height(GAP))
-                                OutlinedButton(
-                                    onClick = { addApp = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) { Text("+ Schnellzugriff hinzufügen") }
-                            }
-                        }
-                        item {
-                            Panel {
-                                Text("Weitere Tasten", style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(GAP))
-                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                    KeyButton("Play", Modifier.weight(1f)) { key("KEY_PLAY") }
-                                    KeyButton("Pause", Modifier.weight(1f)) { key("KEY_PAUSE") }
-                                    KeyButton("Stop", Modifier.weight(1f)) { key("KEY_STOP") }
-                                }
-                                Spacer(Modifier.height(GAP))
-                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                    KeyButton("Guide", Modifier.weight(1f)) { key("KEY_GUIDE") }
-                                    KeyButton("Menü", Modifier.weight(1f)) { key("KEY_MENU") }
-                                    KeyButton("Text", Modifier.weight(1f)) { sendText = true }
+                                    if (pinned.isNotEmpty()) {
+                                        ShortcutGrid(pinned, installed,
+                                            onLaunch = ::launch,
+                                            onReorder = ::saveApps)
+                                    } else {
+                                        Text("Mit + Apps hinzufügen",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }
                     }
-
                     1 -> {
                         item { Text("Installierte TV-Apps", style = MaterialTheme.typography.titleLarge) }
                         item {
@@ -393,6 +350,146 @@ private fun RemoteApp() {
                 }
             )
         }
+    }
+}
+
+
+@Composable
+private fun CompactRemote(
+    status: String,
+    onReconnect: () -> Unit,
+    onPower: () -> Unit,
+    onKey: (String) -> Unit,
+    onPlayPause: (Boolean) -> Boolean
+) {
+    var paused by remember { mutableStateOf(false) }
+    val buttonBackground = MaterialTheme.colorScheme.surfaceVariant
+    val accent = MaterialTheme.colorScheme.primary
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // No large title; keep only the compact connection indicator.
+        Row(
+            Modifier.fillMaxWidth().height(34.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(7.dp).clip(CircleShape)
+                .background(if (status == "Verbunden") Color(0xFF45C69B) else Color(0xFFF2AE62)))
+            Spacer(Modifier.width(8.dp))
+            Text(status, Modifier.weight(1f),
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            IconButton(onClick = onReconnect, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Refresh, "Neu verbinden", modifier = Modifier.size(20.dp))
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            ControlButton(Icons.Default.Home, "Home", onClick = { onKey("KEY_HOME") })
+            ControlButton(Icons.AutoMirrored.Filled.ArrowBack, "Zurück",
+                onClick = { onKey("KEY_RETURN") })
+            ControlButton(Icons.Default.Input, "Quelle",
+                onClick = { onKey("KEY_SOURCE") })
+            ControlButton(Icons.Default.VolumeOff, "Stumm",
+                onClick = { onKey("KEY_MUTE") })
+            ControlButton(Icons.Default.PowerSettingsNew, "Ein/Aus",
+                background = Color(0xFF3D2838),
+                tint = Color(0xFFFFAFC3),
+                onClick = onPower)
+        }
+
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val padSize = (maxWidth - 134.dp).coerceIn(152.dp, 206.dp)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(
+                    Modifier.width(56.dp).height(padSize),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    ControlButton(Icons.Default.Add, "Lauter", onClick = { onKey("KEY_VOLUP") })
+                    ControlButton(Icons.Default.VolumeMute, "Stumm", onClick = { onKey("KEY_MUTE") })
+                    ControlButton(Icons.Default.Remove, "Leiser", onClick = { onKey("KEY_VOLDOWN") })
+                }
+                Box(
+                    Modifier.size(padSize).clip(CircleShape)
+                        .background(buttonBackground)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(onClick = { onKey("KEY_UP") },
+                        modifier = Modifier.align(Alignment.TopCenter).size(54.dp)) {
+                        Icon(Icons.Default.KeyboardArrowUp, "Hoch", modifier = Modifier.size(32.dp))
+                    }
+                    IconButton(onClick = { onKey("KEY_DOWN") },
+                        modifier = Modifier.align(Alignment.BottomCenter).size(54.dp)) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Runter", modifier = Modifier.size(32.dp))
+                    }
+                    IconButton(onClick = { onKey("KEY_LEFT") },
+                        modifier = Modifier.align(Alignment.CenterStart).size(54.dp)) {
+                        Icon(Icons.Default.KeyboardArrowLeft, "Links", modifier = Modifier.size(32.dp))
+                    }
+                    IconButton(onClick = { onKey("KEY_RIGHT") },
+                        modifier = Modifier.align(Alignment.CenterEnd).size(54.dp)) {
+                        Icon(Icons.Default.KeyboardArrowRight, "Rechts", modifier = Modifier.size(32.dp))
+                    }
+                    FilledTonalButton(
+                        onClick = { onKey("KEY_ENTER") },
+                        modifier = Modifier.size(64.dp),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(0.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = accent.copy(alpha = .26f))
+                    ) { Text("OK", fontWeight = FontWeight.Bold) }
+                }
+                Column(
+                    Modifier.width(56.dp).height(padSize),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    ControlButton(Icons.Default.Add, "Sender hoch",
+                        onClick = { onKey("KEY_CHUP") })
+                    Text("CH", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    ControlButton(Icons.Default.Remove, "Sender runter",
+                        onClick = { onKey("KEY_CHDOWN") })
+                }
+            }
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            FilledTonalButton(
+                modifier = Modifier.height(50.dp).width(144.dp),
+                shape = RoundedCornerShape(16.dp),
+                onClick = {
+                    val nextPlay = paused
+                    if (onPlayPause(nextPlay)) paused = !paused
+                }
+            ) {
+                Icon(Icons.Default.PlayArrow, null)
+                Spacer(Modifier.width(3.dp))
+                Icon(Icons.Default.Pause, null)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlButton(
+    image: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    background: Color = MaterialTheme.colorScheme.surfaceVariant,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(52.dp).clip(CircleShape).background(background)
+    ) {
+        Icon(image, contentDescription = description, tint = tint,
+            modifier = Modifier.size(26.dp))
     }
 }
 
