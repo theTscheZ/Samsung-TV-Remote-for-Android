@@ -1,6 +1,10 @@
 package com.example.samsungremote
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.File
+import java.security.MessageDigest
 import android.net.wifi.WifiManager
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +93,11 @@ class TvClient(
                             val list = (0 until array.length()).mapNotNull { index ->
                                 val app = array.optJSONObject(index) ?: return@mapNotNull null
                                 val id = app.optString("appId", app.optString("id"))
-                                if (id.isBlank()) null else TvApp(app.optString("name", id), id)
+                                if (id.isBlank()) null else {
+                                    val icon = app.optString("icon")
+                                    if (icon.isNotBlank()) saveAppIcon(context, id, icon)
+                                    TvApp(app.optString("name", id), id)
+                                }
                             }
                             onApps(list.distinctBy { it.id }.sortedBy { it.name.lowercase() })
                         }
@@ -188,4 +196,33 @@ class TvClient(
             (numbers[0] == 10 || numbers[0] == 192 && numbers[1] == 168 ||
                 numbers[0] == 172 && numbers[1] in 16..31)
     }
+}
+
+/**
+ * Samsung's installed-app response can include the image as a base64-encoded icon.
+ * Keep images in internal storage, rather than putting large blobs in preferences.
+ * A missing/unsupported icon is intentionally handled by the UI fallback.
+ */
+internal fun appIconFile(context: Context, appId: String): File {
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest(appId.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+    return File(File(context.filesDir, "app-icons"), "$digest.png")
+}
+
+private fun saveAppIcon(context: Context, appId: String, encodedIcon: String) {
+    try {
+        val value = encodedIcon.substringAfter("base64,", encodedIcon)
+        if (value.length > 2_800_000) return
+        val bytes = Base64.decode(value, Base64.DEFAULT)
+        if (bytes.isEmpty() || bytes.size > 2_000_000) return
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        if (options.outWidth !in 1..2048 || options.outHeight !in 1..2048) return
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return
+        val destination = appIconFile(context, appId)
+        destination.parentFile?.mkdirs()
+        destination.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+    } catch (_: Exception) { /* Preserve shortcut even if icon data is unavailable */ }
 }
