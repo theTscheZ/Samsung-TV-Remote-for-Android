@@ -40,6 +40,19 @@ def normalize(path):
     with Image.open(path) as src:
         im=src.convert("RGBA")
     im.thumbnail((800,800),Image.Resampling.LANCZOS)
+    # Dark strokes in some transparent PNG logos become invisible on dark UI.
+    contrast = {
+        "brand_png_appletv.png": (246,247,251),
+        "brand_png_primevideo.png": (231,240,249),
+        "brand_png_waipu.png": (71,226,212),
+    }.get(path.name)
+    if contrast is not None:
+        pixels = im.load()
+        for yy in range(im.height):
+            for xx in range(im.width):
+                r,g,b,a = pixels[xx,yy]
+                if a>5 and max(r,g,b)<115:
+                    pixels[xx,yy] = (*contrast,a)
     w,h=im.size
     corners=[im.getpixel((x,y))[3] for x,y in
              [(0,0),(w-1,0),(0,h-1),(w-1,h-1)]]
