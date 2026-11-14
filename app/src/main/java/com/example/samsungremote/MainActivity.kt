@@ -668,11 +668,12 @@ private fun ShortcutIcon(
     ) {
         when {
             brand?.iconRes != null -> {
-                Icon(
+                // Image doesn't tint raster logos: preserve original brand colors.
+                Image(
                     painter = painterResource(brand.iconRes),
                     contentDescription = null,
-                    tint = brand.foreground,
-                    modifier = Modifier.size(40.dp)
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(54.dp)
                 )
             }
             brand?.wordmark != null -> {
