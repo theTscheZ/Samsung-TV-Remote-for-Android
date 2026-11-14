@@ -5,10 +5,8 @@ import androidx.compose.ui.graphics.Color
 import java.util.Locale
 
 /**
- * Offline, recognizable icons for installed Samsung TV apps.
- * Resolve by app ID first (when verified/known), then the name supplied by the TV.
- * Some apps cannot provide their own image over the Samsung WebSocket API.
- * Fallback wordmarks are intentionally readable instead of one-letter grey circles.
+ * Raster PNG icons are bundled locally from Homarr dashboard-icons and website favicons.
+ * Unknown TV apps still use Samsung-delivered imagery or a readable fallback.
  */
 internal data class BrandStyle(
     @DrawableRes val iconRes: Int? = null,
@@ -20,53 +18,40 @@ internal data class BrandStyle(
 internal fun brandFor(app: TvApp): BrandStyle? {
     val name = app.name.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9+]"), "")
     val id = app.id.trim()
-    fun has(vararg words: String): Boolean = words.any { name.contains(it) }
-
+    fun has(vararg aliases: String) = aliases.any(name::contains)
+    val dark = Color(0xFF171B28)
     return when {
         id == "11101200001" || has("netflix") ->
-            BrandStyle(R.drawable.brand_netflix, Color(0xFF101010), Color(0xFFE50914))
-        id == "111299001912" || has("youtube", "youtubetv") ->
-            BrandStyle(R.drawable.brand_youtube, Color(0xFFFF0033))
+            BrandStyle(R.drawable.brand_png_netflix, dark)
+        id == "111299001912" || has("youtube") ->
+            BrandStyle(R.drawable.brand_png_youtube, dark)
         id == "3202102009185" || has("crunchyroll") ->
-            BrandStyle(R.drawable.brand_crunchyroll, Color(0xFFFF6A00))
+            BrandStyle(R.drawable.brand_png_crunchyroll, dark)
         id == "3201606009684" || has("spotify") ->
-            BrandStyle(R.drawable.brand_spotify, Color(0xFF1DB954), Color.Black)
-        has("twitch") ->
-            BrandStyle(R.drawable.brand_twitch, Color(0xFF9146FF))
-        has("plex") ->
-            BrandStyle(R.drawable.brand_plex, Color(0xFF121212), Color(0xFFE5A00D))
-        has("appletv", "appletv+") ->
-            BrandStyle(R.drawable.brand_appletv, Color(0xFF181818))
-        has("dazn") ->
-            BrandStyle(R.drawable.brand_dazn, Color(0xFF161616))
-        has("paramount") ->
-            BrandStyle(R.drawable.brand_paramountplus, Color(0xFF0064FF))
-        has("samsungtvplus", "tvplus") ->
-            BrandStyle(R.drawable.brand_samsung, Color(0xFF1428A0))
-        has("zdf") ->
-            BrandStyle(wordmark = "ZDF", background = Color(0xFFFF8000))
+            BrandStyle(R.drawable.brand_png_spotify, dark)
+        has("twitch") -> BrandStyle(R.drawable.brand_png_twitch, dark)
+        has("plex") -> BrandStyle(R.drawable.brand_png_plex, dark)
+        has("appletv", "apple+") -> BrandStyle(R.drawable.brand_png_appletv, dark)
+        has("dazn") -> BrandStyle(R.drawable.brand_png_dazn, dark)
+        has("paramount") -> BrandStyle(R.drawable.brand_png_paramountplus, dark)
+        has("samsungtvplus", "tvplus") -> BrandStyle(R.drawable.brand_png_samsung, dark)
+        has("zdf") -> BrandStyle(R.drawable.brand_png_zdf, dark)
         id == "3201901017640" || has("disney") ->
-            BrandStyle(iconRes = R.drawable.brand_disneyplus, background = Color(0xFF14213A))
+            BrandStyle(R.drawable.brand_png_disneyplus, dark)
         id == "3201512006785" || has("primevideo", "amazonprime", "prime") ->
-            BrandStyle(iconRes = R.drawable.brand_primevideo, background = Color(0xFF0F171E), foreground = Color.White)
+            BrandStyle(R.drawable.brand_png_primevideo, dark)
         has("canal+", "canalplus", "canal") ->
-            BrandStyle(wordmark = "CANAL+", background = Color(0xFF101010))
-        has("joyn") ->
-            BrandStyle(wordmark = "joyn", background = Color(0xFF3B19A7))
-        has("waipu") ->
-            BrandStyle(wordmark = "waipu.tv", background = Color(0xFF101010))
-        has("ard", "daserste") ->
-            BrandStyle(wordmark = "ARD", background = Color(0xFF0052A5))
-        has("rtl+") ->
-            BrandStyle(wordmark = "RTL+", background = Color(0xFF7F00FF))
-        has("magenta", "telekom") ->
-            BrandStyle(wordmark = "MAGENTA", background = Color(0xFFE20074))
-        has("tiktok") ->
-            BrandStyle(wordmark = "TikTok", background = Color(0xFF080808))
-        has("arte") ->
-            BrandStyle(wordmark = "ARTE", background = Color(0xFFFF4D00))
-        has("sky", "wow") ->
-            BrandStyle(wordmark = if (has("wow")) "WOW" else "sky", background = Color(0xFF172051))
+            BrandStyle(R.drawable.brand_png_canalplus, dark)
+        has("joyn") -> BrandStyle(R.drawable.brand_png_joyn, dark)
+        has("waipu") -> BrandStyle(R.drawable.brand_png_waipu, dark)
+        has("ard", "daserste") -> BrandStyle(R.drawable.brand_png_ard, dark)
+        has("rtl+") -> BrandStyle(R.drawable.brand_png_rtlplus, dark)
+        has("magenta", "telekom") -> BrandStyle(R.drawable.brand_png_magenta, dark)
+        has("tiktok") -> BrandStyle(R.drawable.brand_png_tiktok, dark)
+        has("arte") -> BrandStyle(R.drawable.brand_png_arte, dark)
+        has("wow") -> BrandStyle(R.drawable.brand_png_wow, dark)
+        has("sky") -> BrandStyle(R.drawable.brand_png_sky, dark)
+        has("hulu") -> BrandStyle(R.drawable.brand_png_hulu, dark)
         else -> null
     }
 }
