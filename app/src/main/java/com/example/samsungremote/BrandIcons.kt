@@ -46,9 +46,11 @@ internal fun brandFor(app: TvApp): BrandStyle? {
         has("zdf") ->
             BrandStyle(wordmark = "ZDF", background = Color(0xFFFF8000))
         id == "3201901017640" || has("disney") ->
-            BrandStyle(wordmark = "Disney+", background = Color(0xFF122A77))
+            BrandStyle(iconRes = R.drawable.brand_disneyplus, background = Color(0xFF14213A))
         id == "3201512006785" || has("primevideo", "amazonprime", "prime") ->
-            BrandStyle(wordmark = "prime\nvideo", background = Color(0xFF0F171E), foreground = Color(0xFF00A8E1))
+            BrandStyle(iconRes = R.drawable.brand_primevideo, background = Color(0xFF0F171E), foreground = Color.White)
+        has("canal+", "canalplus", "canal") ->
+            BrandStyle(wordmark = "CANAL+", background = Color(0xFF101010))
         has("joyn") ->
             BrandStyle(wordmark = "joyn", background = Color(0xFF3B19A7))
         has("waipu") ->
