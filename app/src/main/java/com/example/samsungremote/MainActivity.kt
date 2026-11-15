@@ -88,22 +88,9 @@ private fun RemoteApp() {
     var installed by remember { mutableStateOf(emptyList<TvApp>()) }
     val client = remember { TvClient(context, { status = it }, { installed = it }) }
     val wifi = remember { WifiPreference(context) }
-    var preferredSsid by remember { mutableStateOf(wifi.preferredSsid) }
-    var wifiMessage by remember { mutableStateOf("") }
     var foreground by remember { mutableStateOf(false) }
     var networkSignal by remember { mutableIntStateOf(0) }
     val activity = context as ComponentActivity
-    val currentWifiPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        wifiMessage = if (granted) {
-            val current = wifi.currentSsid()
-            if (current == null) "WLAN-Name nicht lesbar. Bitte manuell eingeben."
-            else {
-                preferredSsid = current
-                wifi.preferredSsid = current
-                "WLAN gespeichert: $current"
-            }
-        } else "Standortberechtigung für WLAN-Namen nicht erteilt"
-    }
     var ip by remember { mutableStateOf(client.host) }
     var mac by remember { mutableStateOf(client.getMac()) }
     var page by remember { mutableIntStateOf(0) }
@@ -328,6 +315,9 @@ private fun RemoteApp() {
                         item {
                             Panel {
                                 Text("Handy und TV müssen im selben Heimnetz sein.")
+                                TextButton(onClick = { context.startActivity(wifi.wifiSettingsIntent()) }) {
+                                    Text("Android-WLAN-Einstellungen öffnen")
+                                }
                                 Spacer(Modifier.height(12.dp))
                                 OutlinedTextField(
                                     value = ip, onValueChange = { ip = it },
@@ -370,46 +360,6 @@ private fun RemoteApp() {
                                 }
                                 Text("Setzt nur das Verbindungstoken zurück. Schnellzugriffe und Einstellungen bleiben erhalten.",
                                     style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                        item {
-                            Panel {
-                                Text("Bevorzugtes TV-WLAN", style = MaterialTheme.typography.titleMedium)
-                                Spacer(Modifier.height(GAP))
-                                Text("WLAN des Fernsehers auswählen. Die App verbindet sich beim Öffnen und bei Rückkehr zum TV automatisch.",
-                                    style = MaterialTheme.typography.bodySmall)
-                                OutlinedTextField(value = preferredSsid,
-                                    onValueChange = { preferredSsid = it },
-                                    label = { Text("WLAN-Name (SSID)") },
-                                    singleLine = true, modifier = Modifier.fillMaxWidth())
-                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
-                                    TextButton(onClick = {
-                                        if (ContextCompat.checkSelfPermission(context,
-                                                Manifest.permission.ACCESS_FINE_LOCATION) ==
-                                            PackageManager.PERMISSION_GRANTED) {
-                                            val current = wifi.currentSsid()
-                                            if (current == null) wifiMessage = "WLAN-Name nicht verfügbar"
-                                            else {
-                                                preferredSsid = current
-                                                wifi.preferredSsid = current
-                                                wifiMessage = "WLAN gespeichert: $current"
-                                            }
-                                        } else currentWifiPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                                    }) { Text("Aktuelles WLAN") }
-                                    TextButton(onClick = { context.startActivity(wifi.wifiSettingsIntent()) }) {
-                                        Text("WLAN wechseln")
-                                    }
-                                }
-                                Button(onClick = {
-                                    wifi.preferredSsid = preferredSsid
-                                    wifiMessage = "WLAN gespeichert"
-                                    networkSignal++
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Bevorzugtes WLAN speichern") }
-                                if (wifiMessage.isNotBlank()) Text(wifiMessage,
-                                    style = MaterialTheme.typography.bodySmall)
-                                Text("Android verwaltet das WLAN. Die App verbindet sich mit dem TV, sobald er erreichbar ist.",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         item {
