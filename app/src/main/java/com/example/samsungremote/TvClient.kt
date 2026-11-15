@@ -1,6 +1,8 @@
 package com.example.samsungremote
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
@@ -34,6 +36,11 @@ class TvClient(
         get() = prefs.getString("host", "") ?: ""
         set(value) { prefs.edit().putString("host", value).apply() }
     private var socket: WebSocket? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile var connecting = false
+        private set
+    @Volatile var lastConnectAttempt = 0L
+        private set
     @Volatile var connected = false
         private set
 
@@ -60,6 +67,9 @@ class TvClient(
         val cleaned = address.trim().removePrefix("http://").removePrefix("https://")
             .substringBefore('/').substringBefore(':')
         if (!isPrivateIp(cleaned)) { onStatus("Nur private IPv4-Adressen erlaubt"); return }
+        if (cleaned == host && (connected || connecting && System.currentTimeMillis() - lastConnectAttempt < 12_000)) return
+        connecting = true
+        lastConnectAttempt = System.currentTimeMillis()
         socket?.close(1000, "Reconnect")
         connected = false
         host = cleaned
@@ -79,8 +89,10 @@ class TvClient(
                         "ms.channel.connect" -> {
                             val newToken = obj.optJSONObject("data")?.optString("token").orEmpty()
                             if (newToken.isNotBlank()) prefs.edit().putString("token_$cleaned", newToken).apply()
+                            if (webSocket !== socket) return
+                            connecting = false
                             connected = true
-                            onStatus("Verbunden")
+                            mainHandler.post { onStatus("Verbunden") }
                             requestApps()
                         }
                         "ed.installedApp.get" -> {
@@ -99,18 +111,22 @@ class TvClient(
                                     TvApp(app.optString("name", id), id)
                                 }
                             }
-                            onApps(list.distinctBy { it.id }.sortedBy { it.name.lowercase() })
+                            mainHandler.post { if (webSocket === socket) onApps(list.distinctBy { it.id }.sortedBy { it.name.lowercase() }) }
                         }
                     }
                 } catch (_: Exception) { }
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (webSocket !== socket) return
+                connecting = false
                 connected = false
-                onStatus("Verbindung fehlgeschlagen: ${t.message ?: "Unbekannter Fehler"}")
+                mainHandler.post { onStatus("Verbindung fehlgeschlagen: ${t.message ?: "Unbekannter Fehler"}") }
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (webSocket !== socket) return
+                connecting = false
                 connected = false
-                onStatus("Nicht verbunden")
+                mainHandler.post { onStatus("Nicht verbunden") }
             }
         })
     }
@@ -136,7 +152,13 @@ class TvClient(
             .put("DataOfCmd", "base64")
             .put("TypeOfRemote", "SendInputString")))
 
-    fun disconnect() { socket?.close(1000, "Exit"); socket = null; connected = false }
+    fun disconnect() {
+        val previous = socket
+        socket = null
+        connecting = false
+        connected = false
+        previous?.close(1000, "Exit")
+    }
 
     fun getMac(): String = prefs.getString("mac_$host", "").orEmpty()
     fun setMac(mac: String) { prefs.edit().putString("mac_$host", mac).apply() }
