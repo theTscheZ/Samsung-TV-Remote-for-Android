@@ -148,6 +148,7 @@ private fun RemoteApp() {
             client.disconnect()
         }
     }
+    LaunchedEffect(wifi) { wifi.removeLegacySuggestions() }
     LaunchedEffect(client, foreground, networkSignal) {
         while (foreground) {
             if (client.host.isNotBlank() && !client.connected &&
