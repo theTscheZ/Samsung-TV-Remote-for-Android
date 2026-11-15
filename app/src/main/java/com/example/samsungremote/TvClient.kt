@@ -206,9 +206,8 @@ class TvClient(
             lock.acquire()
             DatagramSocket().use { probe ->
                 probe.soTimeout = 500
-                val search = ("M-SEARCH * HTTP/1.1\\r\\nHOST: 239.255.255.250:1900\\r\\n" +
-                    "MAN: \\"ssdp:discover\\"\\r\\nMX: 2\\r\\nST: ssdp:all\\r\\n\\r\\n")
-                    .toByteArray()
+                val search = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n" +
+                    "MAN: \"ssdp:discover\"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n").toByteArray()
                 probe.send(DatagramPacket(search, search.size,
                     InetAddress.getByName("239.255.255.250"), 1900))
                 val until = System.currentTimeMillis() + 2400
