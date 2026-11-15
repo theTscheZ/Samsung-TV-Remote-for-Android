@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -113,7 +114,7 @@ private fun RemoteApp() {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                NavigationBar {
+                NavigationBar(modifier = Modifier.blur(if (draggingOutside) 5.dp else 0.dp)) {
                     NavigationBarItem(page == 0, { page = 0 },
                         icon = { Icon(Icons.Default.SettingsRemote, null) },
                         label = { Text("Remote") })
@@ -167,7 +168,8 @@ private fun RemoteApp() {
                                 onPlayPause = { play ->
                                     if (client.key(if (play) "KEY_PLAY" else "KEY_PAUSE")) true
                                     else { status = "Bitte TV zuerst verbinden"; false }
-                                }
+                                },
+                                modifier = Modifier.blur(if (draggingOutside) 5.dp else 0.dp)
                             )
                         }
                         item {
@@ -440,12 +442,13 @@ private fun CompactRemote(
     onReconnect: () -> Unit,
     onPower: () -> Unit,
     onKey: (String) -> Unit,
-    onPlayPause: (Boolean) -> Boolean
+    onPlayPause: (Boolean) -> Boolean,
+    modifier: Modifier = Modifier
 ) {
     var paused by remember { mutableStateOf(false) }
     val buttonBackground = MaterialTheme.colorScheme.surfaceVariant
     val accent = MaterialTheme.colorScheme.primary
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // No large title; keep only the compact connection indicator.
         Row(
             Modifier.fillMaxWidth().height(34.dp),
