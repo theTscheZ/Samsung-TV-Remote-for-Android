@@ -57,7 +57,7 @@ internal class WifiPreference(private val context: Context) {
             if (password.isNotBlank()) builder.setWpa2Passphrase(password)
             val suggestion = builder.build()
             // Existing suggestion is removed only when a new one is configured.
-            val current = wifi.networkSuggestions
+            val current = if (Build.VERSION.SDK_INT >= 30) wifi.networkSuggestions else emptyList()
             if (current.isNotEmpty()) wifi.removeNetworkSuggestions(current)
             val result = wifi.addNetworkSuggestions(listOf(suggestion))
             when (result) {
