@@ -346,6 +346,9 @@ private fun RemoteApp() {
                                     onClick = { client.connect(ip, force = true); mac = client.getMac() },
                                     modifier = Modifier.fillMaxWidth().height(54.dp)
                                 ) { Text("Verbinden") }
+                                Text(status, modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.height(GAP))
                                 OutlinedButton(
                                     onClick = {
@@ -353,6 +356,8 @@ private fun RemoteApp() {
                                             scanning = true
                                             discovered = client.discover()
                                             scanning = false
+                                            if (discovered.isEmpty()) status =
+                                                "Kein TV gefunden (SSDP und Port 8002 im lokalen WLAN geprüft)"
                                         }
                                     }, enabled = !scanning, modifier = Modifier.fillMaxWidth()
                                 ) { Text(if (scanning) "Suche läuft …" else "TV im WLAN suchen") }
