@@ -1,6 +1,19 @@
 package com.example.samsungremote
 
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -74,6 +87,29 @@ private fun RemoteApp() {
     var status by remember { mutableStateOf("Nicht verbunden") }
     var installed by remember { mutableStateOf(emptyList<TvApp>()) }
     val client = remember { TvClient(context, { status = it }, { installed = it }) }
+    val wifi = remember { WifiPreference(context) }
+    var preferredSsid by remember { mutableStateOf(wifi.preferredSsid) }
+    var wifiPassword by remember { mutableStateOf("") }
+    var wifiMessage by remember { mutableStateOf("") }
+    var foreground by remember { mutableStateOf(false) }
+    var networkSignal by remember { mutableIntStateOf(0) }
+    val activity = context as ComponentActivity
+    val currentWifiPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        wifiMessage = if (granted) {
+            val current = wifi.currentSsid()
+            if (current == null) "WLAN-Name nicht lesbar. Bitte manuell eingeben."
+            else {
+                preferredSsid = current
+                wifi.preferredSsid = current
+                "WLAN gespeichert: $current"
+            }
+        } else "Standortberechtigung für WLAN-Namen nicht erteilt"
+    }
+    val suggestionPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        wifiMessage = if (granted) wifi.suggestNetwork(preferredSsid, wifiPassword)
+            else "WLAN-Berechtigung nicht erteilt"
+        wifiPassword = ""
+    }
     var ip by remember { mutableStateOf(client.host) }
     var mac by remember { mutableStateOf(client.getMac()) }
     var page by remember { mutableIntStateOf(0) }
@@ -103,7 +139,42 @@ private fun RemoteApp() {
         if (!client.launch(app.id)) status = "App konnte nicht gestartet werden"
     }
 
-    DisposableEffect(client) { onDispose { client.disconnect() } }
+    DisposableEffect(client, activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> { foreground = true; networkSignal++ }
+                Lifecycle.Event.ON_STOP -> foreground = false
+                else -> Unit
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        foreground = activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        val manager = context.getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                activity.runOnUiThread { networkSignal++ }
+            }
+            override fun onLost(network: Network) {
+                activity.runOnUiThread { networkSignal++ }
+            }
+        }
+        val networkRequest = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
+        try { manager.registerNetworkCallback(networkRequest, callback) } catch (_: Exception) {}
+        onDispose {
+            activity.lifecycle.removeObserver(observer)
+            try { manager.unregisterNetworkCallback(callback) } catch (_: Exception) {}
+            client.disconnect()
+        }
+    }
+    LaunchedEffect(client, foreground, networkSignal) {
+        while (foreground) {
+            if (client.host.isNotBlank() && wifi.canReachTv() && !client.connected &&
+                (!client.connecting || System.currentTimeMillis() - client.lastConnectAttempt > 12_000L)
+            ) client.connect(client.host)
+            delay(3_000L)
+        }
+    }
 
     MaterialTheme(colorScheme = darkColorScheme(
         primary = Color(0xFF9FB7FF),
