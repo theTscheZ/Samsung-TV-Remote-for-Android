@@ -162,15 +162,17 @@ class TvClient(
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (webSocket !== socket) return
+                if ((response?.code == 401 || response?.code == 403) && recoverStaleToken(webSocket)) return
                 connecting = false
                 connected = false
                 mainHandler.post { onStatus("Verbindung fehlgeschlagen (${cleaned}:8002): ${t.message ?: "Unbekannter Fehler"}") }
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (webSocket !== socket) return
+                if ((code == 1008 || reason.contains("unauthor", true)) && recoverStaleToken(webSocket)) return
                 connecting = false
                 connected = false
-                mainHandler.post { onStatus("Nicht verbunden") }
+                mainHandler.post { onStatus("Nicht verbunden (Code $code)") }
             }
         })
     }
