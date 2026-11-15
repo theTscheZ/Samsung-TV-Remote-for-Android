@@ -89,7 +89,6 @@ private fun RemoteApp() {
     val client = remember { TvClient(context, { status = it }, { installed = it }) }
     val wifi = remember { WifiPreference(context) }
     var preferredSsid by remember { mutableStateOf(wifi.preferredSsid) }
-    var wifiPassword by remember { mutableStateOf("") }
     var wifiMessage by remember { mutableStateOf("") }
     var foreground by remember { mutableStateOf(false) }
     var networkSignal by remember { mutableIntStateOf(0) }
@@ -104,11 +103,6 @@ private fun RemoteApp() {
                 "WLAN gespeichert: $current"
             }
         } else "Standortberechtigung für WLAN-Namen nicht erteilt"
-    }
-    val suggestionPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        wifiMessage = if (granted) wifi.suggestNetwork(preferredSsid, wifiPassword)
-            else "WLAN-Berechtigung nicht erteilt"
-        wifiPassword = ""
     }
     var ip by remember { mutableStateOf(client.host) }
     var mac by remember { mutableStateOf(client.getMac()) }
@@ -368,7 +362,13 @@ private fun RemoteApp() {
                                         mac = client.getMac()
                                     }) { Text("Gefunden: $found") }
                                 }
-                                Text("Beim ersten Verbinden die Freigabe auf dem TV bestätigen.",
+                                OutlinedButton(onClick = {
+                                    client.resetPairingAndReconnect()
+                                    status = "Neue TV-Kopplung wird angefordert"
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("TV-Kopplung erneuern")
+                                }
+                                Text("Setzt nur das Verbindungstoken zurück. Schnellzugriffe und Einstellungen bleiben erhalten.",
                                     style = MaterialTheme.typography.bodySmall)
                             }
                         }
@@ -405,33 +405,9 @@ private fun RemoteApp() {
                                     wifiMessage = "WLAN gespeichert"
                                     networkSignal++
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Bevorzugtes WLAN speichern") }
-                                Spacer(Modifier.height(8.dp))
-                                HorizontalDivider()
-                                Spacer(Modifier.height(8.dp))
-                                Text("Optional: Android dieses WLAN für automatische Verbindungen vorschlagen.",
-                                    style = MaterialTheme.typography.bodySmall)
-                                OutlinedTextField(value = wifiPassword, onValueChange = { wifiPassword = it },
-                                    label = { Text("WLAN-Passwort (bei offenem WLAN leer)") },
-                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                    singleLine = true, modifier = Modifier.fillMaxWidth())
-                                OutlinedButton(onClick = {
-                                    wifi.preferredSsid = preferredSsid
-                                    val required = if (Build.VERSION.SDK_INT >= 33)
-                                        Manifest.permission.NEARBY_WIFI_DEVICES
-                                    else Manifest.permission.ACCESS_FINE_LOCATION
-                                    if (ContextCompat.checkSelfPermission(context, required) !=
-                                        PackageManager.PERMISSION_GRANTED)
-                                        suggestionPermission.launch(required)
-                                    else {
-                                        wifiMessage = wifi.suggestNetwork(preferredSsid, wifiPassword)
-                                        wifiPassword = ""
-                                    }
-                                }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Automatische WLAN-Verbindung einrichten")
-                                }
                                 if (wifiMessage.isNotBlank()) Text(wifiMessage,
                                     style = MaterialTheme.typography.bodySmall)
-                                Text("Android entscheidet über den WLAN-Wechsel und kann eine Freigabe verlangen.",
+                                Text("Android verwaltet das WLAN. Die App verbindet sich mit dem TV, sobald er erreichbar ist.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
