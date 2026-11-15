@@ -17,6 +17,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -79,7 +84,10 @@ private fun RemoteApp() {
     var newAppId by remember { mutableStateOf("") }
     var typed by remember { mutableStateOf("") }
     var pinned by remember { mutableStateOf(readApps(prefs.getString("apps", "").orEmpty())) }
-    var pendingDelete by remember { mutableStateOf<TvApp?>(null) }
+    var shortcutBounds by remember { mutableStateOf<Rect?>(null) }
+    var draggedShortcut by remember { mutableStateOf<TvApp?>(null) }
+    var dragPosition by remember { mutableStateOf(Offset.Zero) }
+    var draggingOutside by remember { mutableStateOf(false) }
 
     fun saveApps(apps: List<TvApp>) {
         pinned = apps
@@ -101,6 +109,7 @@ private fun RemoteApp() {
         background = Color(0xFF101116),
         surface = Color(0xFF1D2028)
     )) {
+        Box(Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
@@ -166,6 +175,7 @@ private fun RemoteApp() {
                                 color = MaterialTheme.colorScheme.surface,
                                 shape = SHAPE,
                                 modifier = Modifier.fillMaxWidth()
+                                    .onGloballyPositioned { shortcutBounds = it.boundsInRoot() }
                             ) {
                                 Column(Modifier.padding(14.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -181,7 +191,13 @@ private fun RemoteApp() {
                                         ShortcutGrid(pinned, installed,
                                             onLaunch = ::launch,
                                             onReorder = ::saveApps,
-                                            onDelete = { pendingDelete = it })
+                                            shortcutBounds = shortcutBounds,
+                                            onDelete = { app -> saveApps(pinned.filterNot { it.id == app.id }) },
+                                            onDragVisual = { app, point ->
+                                                draggedShortcut = app
+                                                dragPosition = point
+                                                draggingOutside = app != null && shortcutBounds?.contains(point) == false
+                                            })
                                     } else {
                                         Text("Mit + Apps hinzufügen",
                                             style = MaterialTheme.typography.bodySmall,
@@ -304,22 +320,67 @@ private fun RemoteApp() {
             }
         }
 
-        pendingDelete?.let { app ->
-            AlertDialog(
-                onDismissRequest = { pendingDelete = null },
-                title = { Text("Schnellzugriff entfernen?") },
-                text = { Text("${app.name} aus den Schnellzugriffen entfernen? Die App bleibt auf dem TV installiert.") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        saveApps(pinned.filterNot { it.id == app.id })
-                        pendingDelete = null
-                    }) { Text("Entfernen") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { pendingDelete = null }) { Text("Abbrechen") }
+        if (draggingOutside && draggedShortcut != null && shortcutBounds != null) {
+            val rect = shortcutBounds!!
+            // Overlay only the outside area; the shortcut card itself remains clear.
+            Canvas(Modifier.fillMaxSize()) {
+                val shade = Color(0xCC121725)
+                drawRect(shade, topLeft = Offset.Zero,
+                    size = Size(size.width, rect.top.coerceAtLeast(0f)))
+                drawRect(shade, topLeft = Offset(0f, rect.bottom.coerceAtMost(size.height)),
+                    size = Size(size.width, (size.height - rect.bottom).coerceAtLeast(0f)))
+                drawRect(shade, topLeft = Offset(0f, rect.top.coerceAtLeast(0f)),
+                    size = Size(rect.left.coerceAtLeast(0f),
+                        (rect.bottom - rect.top).coerceAtLeast(0f)))
+                drawRect(shade, topLeft = Offset(rect.right.coerceAtMost(size.width), rect.top.coerceAtLeast(0f)),
+                    size = Size((size.width - rect.right).coerceAtLeast(0f),
+                        (rect.bottom - rect.top).coerceAtLeast(0f)))
+            }
+            // Dropping anywhere in the darkened area removes the shortcut.
+            val density = LocalDensity.current
+            val trashTop = with(density) {
+                if (rect.top > 180.dp.toPx())
+                    ((rect.top / 2f) - 40.dp.toPx()).roundToInt().coerceAtLeast(0)
+                else
+                    (rect.bottom + 12.dp.toPx()).roundToInt()
+            }
+            Column(
+                modifier = Modifier.align(Alignment.TopCenter)
+                    .offset { IntOffset(0, trashTop) },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFF6A3042),
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Löschen",
+                            tint = Color.White, modifier = Modifier.size(32.dp))
+                    }
                 }
-            )
+                Spacer(Modifier.height(8.dp))
+                Text("Hierher ziehen zum Löschen",
+                    color = Color.White, style = MaterialTheme.typography.labelMedium)
+            }
         }
+
+        val overlayDensity = LocalDensity.current
+        draggedShortcut?.let { dragged ->
+            Box(Modifier
+                .offset {
+                    IntOffset(
+                        dragPosition.x.roundToInt() - with(overlayDensity) { 34.dp.roundToPx() },
+                        dragPosition.y.roundToInt() - with(densityFromPx()) { 34.dp.roundToPx() }
+                    )
+                }
+                .zIndex(10f)
+            ) {
+                ShortcutIcon(dragged, installed, onClick = {})
+            }
+        }
+
+        } // overlay root Box
 
         if (addApp) {
             AlertDialog(
@@ -551,7 +612,9 @@ private fun ShortcutGrid(
     installedApps: List<TvApp>,
     onLaunch: (TvApp) -> Unit,
     onReorder: (List<TvApp>) -> Unit,
-    onDelete: (TvApp) -> Unit
+    shortcutBounds: Rect?,
+    onDelete: (TvApp) -> Unit,
+    onDragVisual: (TvApp?, Offset) -> Unit
 ) {
     val bounds = remember { mutableStateMapOf<String, Rect>() }
     var draggingId by remember { mutableStateOf<String?>(null) }
@@ -560,23 +623,35 @@ private fun ShortcutGrid(
     var dropTarget by remember { mutableStateOf<String?>(null) }
     val haptics = LocalHapticFeedback.current
 
-    fun finishDrag() {
+    fun finishDrag(cancelled: Boolean = false) {
         val source = draggingId
-        val target = dropTarget
-        if (source != null && target != null && source != target) {
-            val from = apps.indexOfFirst { it.id == source }
-            val to = apps.indexOfFirst { it.id == target }
-            if (from >= 0 && to >= 0) {
-                val reordered = apps.toMutableList()
-                val moved = reordered.removeAt(from)
-                reordered.add(to, moved)
-                onReorder(reordered)
+        val start = dragStartBounds
+        val finalPoint = if (start != null) start.center + dragOffset else Offset.Zero
+        // Never delete on a stationary long press. Only explicit release OUTSIDE the card.
+        val moved = dragOffset.getDistance() > 20f
+        val outside = shortcutBounds?.contains(finalPoint) == false
+        if (!cancelled && source != null && moved) {
+            if (outside) {
+                apps.firstOrNull { it.id == source }?.let(onDelete)
+            } else {
+                val target = dropTarget
+                if (target != null && target != source) {
+                    val from = apps.indexOfFirst { it.id == source }
+                    val to = apps.indexOfFirst { it.id == target }
+                    if (from >= 0 && to >= 0) {
+                        val reordered = apps.toMutableList()
+                        val item = reordered.removeAt(from)
+                        reordered.add(to, item)
+                        onReorder(reordered)
+                    }
+                }
             }
         }
         draggingId = null
         dropTarget = null
         dragStartBounds = null
         dragOffset = Offset.Zero
+        onDragVisual(null, Offset.Zero)
     }
 
     FlowRow(
@@ -590,16 +665,10 @@ private fun ShortcutGrid(
             Box(
                 modifier = Modifier
                     .size(68.dp)
-                    .zIndex(if (isDragging) 2f else 0f)
                     .onGloballyPositioned { bounds[app.id] = it.boundsInRoot() }
                     .graphicsLayer {
-                        if (isDragging) {
-                            translationX = dragOffset.x
-                            translationY = dragOffset.y
-                            scaleX = 1.1f
-                            scaleY = 1.1f
-                            shadowElevation = 12.dp.toPx()
-                        } else if (isTarget) {
+                        alpha = if (isDragging) 0.05f else 1f
+                        if (isTarget) {
                             scaleX = 0.88f
                             scaleY = 0.88f
                         }
@@ -611,31 +680,33 @@ private fun ShortcutGrid(
                                 dragStartBounds = bounds[app.id]
                                 dragOffset = Offset.Zero
                                 dropTarget = null
+                                onDragVisual(app, bounds[app.id]?.center ?: Offset.Zero)
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             },
-                            onDrag = { change, dragAmount ->
+                            onDrag = { change, amount ->
                                 change.consume()
                                 if (draggingId == app.id) {
-                                    dragOffset += dragAmount
-                                    val center = dragStartBounds?.center?.plus(dragOffset)
-                                    if (center != null) {
-                                        val newTarget = apps.firstOrNull {
-                                            it.id != app.id && bounds[it.id]?.contains(center) == true
-                                        }?.id
-                                        if (newTarget != null) dropTarget = newTarget
+                                    dragOffset += amount
+                                    val point = dragStartBounds?.center?.plus(dragOffset)
+                                    if (point != null) {
+                                        onDragVisual(app, point)
+                                        dropTarget = if (shortcutBounds?.contains(point) != false) {
+                                            apps.firstOrNull {
+                                                it.id != app.id && bounds[it.id]?.contains(point) == true
+                                            }?.id
+                                        } else null
                                     }
                                 }
                             },
-                            onDragEnd = {
-                                if (dragOffset.getDistance() < 12.dp.toPx()) onDelete(app)
-                                finishDrag()
-                            },
-                            onDragCancel = { finishDrag() }
+                            onDragEnd = { finishDrag() },
+                            onDragCancel = { finishDrag(cancelled = true) }
                         )
                     },
                 contentAlignment = Alignment.Center
             ) {
-                ShortcutIcon(app, installedApps, onClick = { if (draggingId == null) onLaunch(app) })
+                ShortcutIcon(app, installedApps, onClick = {
+                    if (draggingId == null) onLaunch(app)
+                })
             }
         }
     }
