@@ -369,6 +369,70 @@ private fun RemoteApp() {
                         }
                         item {
                             Panel {
+                                Text("Bevorzugtes TV-WLAN", style = MaterialTheme.typography.titleMedium)
+                                Spacer(Modifier.height(GAP))
+                                Text("WLAN des Fernsehers auswählen. Die App verbindet sich beim Öffnen und bei Rückkehr zum TV automatisch.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                OutlinedTextField(value = preferredSsid,
+                                    onValueChange = { preferredSsid = it },
+                                    label = { Text("WLAN-Name (SSID)") },
+                                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                                Row(horizontalArrangement = Arrangement.spacedBy(GAP)) {
+                                    TextButton(onClick = {
+                                        if (ContextCompat.checkSelfPermission(context,
+                                                Manifest.permission.ACCESS_FINE_LOCATION) ==
+                                            PackageManager.PERMISSION_GRANTED) {
+                                            val current = wifi.currentSsid()
+                                            if (current == null) wifiMessage = "WLAN-Name nicht verfügbar"
+                                            else {
+                                                preferredSsid = current
+                                                wifi.preferredSsid = current
+                                                wifiMessage = "WLAN gespeichert: $current"
+                                            }
+                                        } else currentWifiPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                                    }) { Text("Aktuelles WLAN") }
+                                    TextButton(onClick = { context.startActivity(wifi.wifiSettingsIntent()) }) {
+                                        Text("WLAN wechseln")
+                                    }
+                                }
+                                Button(onClick = {
+                                    wifi.preferredSsid = preferredSsid
+                                    wifiMessage = "WLAN gespeichert"
+                                    networkSignal++
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Bevorzugtes WLAN speichern") }
+                                Spacer(Modifier.height(8.dp))
+                                HorizontalDivider()
+                                Spacer(Modifier.height(8.dp))
+                                Text("Optional: Android dieses WLAN für automatische Verbindungen vorschlagen.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                OutlinedTextField(value = wifiPassword, onValueChange = { wifiPassword = it },
+                                    label = { Text("WLAN-Passwort (bei offenem WLAN leer)") },
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                                OutlinedButton(onClick = {
+                                    wifi.preferredSsid = preferredSsid
+                                    val required = if (Build.VERSION.SDK_INT >= 33)
+                                        Manifest.permission.NEARBY_WIFI_DEVICES
+                                    else Manifest.permission.ACCESS_FINE_LOCATION
+                                    if (ContextCompat.checkSelfPermission(context, required) !=
+                                        PackageManager.PERMISSION_GRANTED)
+                                        suggestionPermission.launch(required)
+                                    else {
+                                        wifiMessage = wifi.suggestNetwork(preferredSsid, wifiPassword)
+                                        wifiPassword = ""
+                                    }
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Automatische WLAN-Verbindung einrichten")
+                                }
+                                if (wifiMessage.isNotBlank()) Text(wifiMessage,
+                                    style = MaterialTheme.typography.bodySmall)
+                                Text("Android entscheidet über den WLAN-Wechsel und kann eine Freigabe verlangen.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        item {
+                            Panel {
                                 Text("Einschalten per Netzwerk",
                                     style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(GAP))
