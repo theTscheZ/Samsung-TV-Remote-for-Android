@@ -169,8 +169,8 @@ private fun RemoteApp() {
     }
     LaunchedEffect(client, foreground, networkSignal) {
         while (foreground) {
-            if (client.host.isNotBlank() && wifi.canReachTv() && !client.connected &&
-                (!client.connecting || System.currentTimeMillis() - client.lastConnectAttempt > 12_000L)
+            if (client.host.isNotBlank() && !client.connected &&
+                (!client.connecting || System.currentTimeMillis() - client.lastConnectAttempt > 15_000L)
             ) client.connect(client.host)
             delay(3_000L)
         }
@@ -209,7 +209,7 @@ private fun RemoteApp() {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         IconButton(onClick = {
-                            if (client.host.isNotBlank()) client.connect(client.host) else page = 2
+                            if (client.host.isNotBlank()) client.reconnect() else page = 2
                         }) { Icon(Icons.Default.Refresh, "Verbinden") }
                     }
                 }
@@ -343,7 +343,7 @@ private fun RemoteApp() {
                                 )
                                 Spacer(Modifier.height(12.dp))
                                 Button(
-                                    onClick = { client.connect(ip); mac = client.getMac() },
+                                    onClick = { client.connect(ip, force = true); mac = client.getMac() },
                                     modifier = Modifier.fillMaxWidth().height(54.dp)
                                 ) { Text("Verbinden") }
                                 Spacer(Modifier.height(GAP))
@@ -359,7 +359,7 @@ private fun RemoteApp() {
                                 discovered.forEach { found ->
                                     TextButton(onClick = {
                                         ip = found
-                                        client.connect(found)
+                                        client.connect(found, force = true)
                                         mac = client.getMac()
                                     }) { Text("Gefunden: $found") }
                                 }
