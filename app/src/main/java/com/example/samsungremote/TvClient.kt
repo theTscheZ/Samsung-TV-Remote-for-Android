@@ -74,6 +74,16 @@ class TvClient(
 
     @Synchronized fun reconnect() { if (host.isNotBlank()) connect(host, force = true) }
 
+    @Synchronized fun resetPairingAndReconnect() {
+        val address = host
+        if (address.isBlank()) {
+            mainHandler.post { onStatus("Zuerst TV-IP eintragen") }
+            return
+        }
+        prefs.edit().remove("token_$address").apply()
+        connect(address, force = true)
+    }
+
     @Synchronized fun connect(address: String, force: Boolean = false) {
         val cleaned = address.trim().removePrefix("http://").removePrefix("https://")
             .substringBefore('/').substringBefore(':')
