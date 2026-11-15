@@ -100,6 +100,22 @@ class TvClient(
         val url = "wss://$cleaned:8002/api/v2/channels/samsung.remote.control?name=$name" +
             if (token.isNotBlank()) "&token=$token" else ""
         socket = localClient.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
+            private var authorized = false
+
+            private fun recoverStaleToken(webSocket: WebSocket): Boolean {
+                if (webSocket !== socket || authorized || token.isBlank()) return false
+                prefs.edit().remove("token_$cleaned").apply()
+                connecting = false
+                connected = false
+                mainHandler.post {
+                    if (webSocket === socket) {
+                        onStatus("TV-Kopplung wird erneuert")
+                        connect(cleaned, force = true)
+                    }
+                }
+                return true
+            }
+
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 if (webSocket === socket) mainHandler.post { onStatus("Warte auf TV-Freigabe") }
             }
@@ -108,6 +124,8 @@ class TvClient(
                     val obj = JSONObject(text)
                     when (obj.optString("event")) {
                         "ms.channel.connect" -> {
+                            if (webSocket !== socket) return
+                            authorized = true
                             val newToken = obj.optJSONObject("data")?.optString("token").orEmpty()
                             if (newToken.isNotBlank()) prefs.edit().putString("token_$cleaned", newToken).apply()
                             if (webSocket !== socket) return
@@ -115,6 +133,11 @@ class TvClient(
                             connected = true
                             mainHandler.post { onStatus("Verbunden") }
                             requestApps()
+                        }
+                        "ms.channel.unauthorized", "ms.channel.timeOut" -> {
+                            if (!recoverStaleToken(webSocket)) {
+                                mainHandler.post { onStatus("TV-Kopplung abgelehnt") }
+                            }
                         }
                         "ed.installedApp.get" -> {
                             val data = obj.opt("data")
