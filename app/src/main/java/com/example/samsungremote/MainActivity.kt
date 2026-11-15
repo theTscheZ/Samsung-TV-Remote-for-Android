@@ -371,7 +371,7 @@ private fun RemoteApp() {
                 .offset {
                     IntOffset(
                         dragPosition.x.roundToInt() - with(overlayDensity) { 34.dp.roundToPx() },
-                        dragPosition.y.roundToInt() - with(densityFromPx()) { 34.dp.roundToPx() }
+                        dragPosition.y.roundToInt() - with(overlayDensity) { 34.dp.roundToPx() }
                     )
                 }
                 .zIndex(10f)
