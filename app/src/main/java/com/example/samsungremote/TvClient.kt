@@ -14,6 +14,15 @@ import kotlinx.coroutines.withContext
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.Socket
+import java.net.InetSocketAddress
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -35,7 +44,7 @@ class TvClient(
     var host: String
         get() = prefs.getString("host", "") ?: ""
         set(value) { prefs.edit().putString("host", value).apply() }
-    private var socket: WebSocket? = null
+    @Volatile private var socket: WebSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile var connecting = false
         private set
@@ -63,11 +72,13 @@ class TvClient(
             .build()
     }
 
-    fun connect(address: String) {
+    @Synchronized fun reconnect() { if (host.isNotBlank()) connect(host, force = true) }
+
+    @Synchronized fun connect(address: String, force: Boolean = false) {
         val cleaned = address.trim().removePrefix("http://").removePrefix("https://")
             .substringBefore('/').substringBefore(':')
         if (!isPrivateIp(cleaned)) { onStatus("Nur private IPv4-Adressen erlaubt"); return }
-        if (cleaned == host && (connected || connecting && System.currentTimeMillis() - lastConnectAttempt < 12_000)) return
+        if (!force && cleaned == host && (connected || connecting && System.currentTimeMillis() - lastConnectAttempt < 15_000)) return
         connecting = true
         lastConnectAttempt = System.currentTimeMillis()
         socket?.close(1000, "Reconnect")
@@ -80,7 +91,7 @@ class TvClient(
             if (token.isNotBlank()) "&token=$token" else ""
         socket = localClient.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                onStatus("Warte auf TV-Freigabe")
+                if (webSocket === socket) mainHandler.post { onStatus("Warte auf TV-Freigabe") }
             }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
@@ -120,7 +131,7 @@ class TvClient(
                 if (webSocket !== socket) return
                 connecting = false
                 connected = false
-                mainHandler.post { onStatus("Verbindung fehlgeschlagen: ${t.message ?: "Unbekannter Fehler"}") }
+                mainHandler.post { onStatus("Verbindung fehlgeschlagen (${cleaned}:8002): ${t.message ?: "Unbekannter Fehler"}") }
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (webSocket !== socket) return
@@ -152,7 +163,7 @@ class TvClient(
             .put("DataOfCmd", "base64")
             .put("TypeOfRemote", "SendInputString")))
 
-    fun disconnect() {
+    @Synchronized fun disconnect() {
         val previous = socket
         socket = null
         connecting = false
@@ -181,35 +192,83 @@ class TvClient(
         } catch (_: Exception) { false }
     }
 
+    /**
+     * Use SSDP first, then a bounded local /24 TCP probe on port 8002.
+     * SSDP is frequently filtered by routers or ignored by sleeping TVs.
+     * The scan runs only when the user explicitly presses Search.
+     */
     suspend fun discover(): List<String> = withContext(Dispatchers.IO) {
+        val found = mutableSetOf<String>()
         val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         val lock = wifi.createMulticastLock("tv-discovery")
         lock.setReferenceCounted(false)
-        lock.acquire()
         try {
-            val found = mutableSetOf<String>()
-            DatagramSocket().use { socket ->
-                socket.soTimeout = 800
-                val search = ("M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\n" +
-                    "MAN: \"ssdp:discover\"\r\nMX: 2\r\nST: ssdp:all\r\n\r\n").toByteArray()
-                socket.send(DatagramPacket(search, search.size,
+            lock.acquire()
+            DatagramSocket().use { probe ->
+                probe.soTimeout = 500
+                val search = ("M-SEARCH * HTTP/1.1\\r\\nHOST: 239.255.255.250:1900\\r\\n" +
+                    "MAN: \\"ssdp:discover\\"\\r\\nMX: 2\\r\\nST: ssdp:all\\r\\n\\r\\n")
+                    .toByteArray()
+                probe.send(DatagramPacket(search, search.size,
                     InetAddress.getByName("239.255.255.250"), 1900))
-                val until = System.currentTimeMillis() + 3200
+                val until = System.currentTimeMillis() + 2400
                 while (System.currentTimeMillis() < until) {
                     val buffer = ByteArray(4096)
-                    val reply = DatagramPacket(buffer, buffer.size)
+                    val packet = DatagramPacket(buffer, buffer.size)
                     try {
-                        socket.receive(reply)
-                        val body = String(buffer, 0, reply.length)
-                        if (body.contains("Samsung", true) || body.contains("TV", true)) {
-                            reply.address.hostAddress?.takeIf(::isPrivateIp)?.let(found::add)
+                        probe.receive(packet)
+                        val body = String(buffer, 0, packet.length)
+                        if (body.contains("Samsung", true) ||
+                            body.contains("samsung.com", true)) {
+                            packet.address.hostAddress?.takeIf(::isPrivateIp)?.let(found::add)
                         }
-                    } catch (_: java.net.SocketTimeoutException) { }
+                    } catch (_: java.net.SocketTimeoutException) {}
                 }
             }
-            found.sorted()
-        } catch (_: Exception) { emptyList() }
-        finally { if (lock.isHeld) lock.release() }
+        } catch (_: Exception) {
+            // The subnet probe below still runs when multicast is unavailable.
+        } finally {
+            if (lock.isHeld) lock.release()
+        }
+
+        val current = wifiIpv4Address()
+        if (current != null && isPrivateIp(current)) {
+            val prefix = current.substringBeforeLast('.') + "."
+            val semaphore = Semaphore(32)
+            val candidates = coroutineScope {
+                (1..254).map { last ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            val address = prefix + last
+                            if (address == current) return@withPermit null
+                            try {
+                                Socket().use { sock ->
+                                    sock.connect(InetSocketAddress(address, 8002), 230)
+                                    address
+                                }
+                            } catch (_: Exception) { null }
+                        }
+                    }
+                }.awaitAll().filterNotNull()
+            }
+            found.addAll(candidates)
+        }
+        found.sorted()
+    }
+
+    private fun wifiIpv4Address(): String? {
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            for (network in cm.allNetworks) {
+                val capabilities = cm.getNetworkCapabilities(network) ?: continue
+                if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) continue
+                val properties = cm.getLinkProperties(network) ?: continue
+                val address = properties.linkAddresses.map { it.address }
+                    .firstOrNull { it is java.net.Inet4Address }?.hostAddress
+                if (address != null) return address
+            }
+        } catch (_: Exception) {}
+        return null
     }
 
     private fun isPrivateIp(address: String): Boolean {
